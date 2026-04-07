@@ -49,6 +49,10 @@ class MegaCmd {
     }
 
     
+    /**
+     * attr.md
+     * @return bool|string|null
+     */
     public function attr(){ return $this->exec('attr');}
     public function autocomplete(){ return $this->exec('autocomplete');}
     /**
@@ -199,15 +203,53 @@ class MegaCmd {
         return $this->exec('export', ['-d '.$remotePath]);
     }
     
-    public function find(){}
-    public function ftp(){}
-    public function fuse_add(){}
-    public function fuse_config(){}
-
-    public function fuse_disable(){}
-    public function fuse_enable(){}
-    public function fuse_remove(){}
-    public function fuse_show(){}
+    /**
+    *Determines time constrains, in the form: [+-]TIMEVALUE
+    * $MTIME may include hours(h), days(d), minutes(M),
+    *seconds(s), months(m) or years(y)
+    *Examples:
+    *"+1m12d3h" shows files modified before 1 month, 12 days and 3 hours the current moment
+    *"-3h" shows files modified within the last 3 hours
+    *"-3d+1h" shows files modified in the last 3 days prior to the last hour
+    * $SIZE may include (B)ytes, (K)ilobytes, (M)egabytes, (G)igabytes & (T)erabytes
+    * Examples:
+    * "+1m12k3B" shows files bigger than 1 Mega, 12 Kbytes and 3Bytes
+    * "-3M" shows files smaller than 3 Megabytes
+    * "-4M+100K" shows files smaller than 4 Mbytes and bigger than 100 Kbytes
+     */
+    public function find(string $remotePath, string $pattern = "", string $type = "", string $mtime = "", string $size = "", bool $showHandles = false, bool $printHandles = false){
+        $args = [];
+        if($remotePath){
+            $args[] = $remotePath;
+        }
+        if($pattern){
+            $args[] = '--pattern="'.$pattern.'"';
+        }
+        if($type){
+            $args[] = '--type='.$type;
+        }   
+        if($mtime){
+            $args[] = '--mtime='.$mtime;
+        }
+        if($size){
+            $args[] = '--size='.$size;
+        }
+        if($showHandles){
+            $args[] = '--show-handles';
+        }
+        if($printHandles){
+            $args[] = '--print-handles';
+        }
+        return $this->exec('find', $args);
+    }
+    /////// UNNECESARY FUNCTIONS ///////
+    // public function ftp(){} 
+    // public function fuse_add(){} 
+    // public function fuse_config(){} 
+    // public function fuse_disable(){} 
+    // public function fuse_enable(){}
+    // public function fuse_remove(){}
+    // public function fuse_show(){}
     public function get($remotePath, $localPath = ".") {
         return $this->exec('get', [$remotePath, $localPath]);
     }
