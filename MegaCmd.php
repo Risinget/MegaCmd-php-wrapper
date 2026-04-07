@@ -531,22 +531,282 @@ class MegaCmd {
     }
 
 
-    public function signup(){}
-    public function speedlimit(){}
-    public function sync(){}
-    public function sync_config(){}
-    public function sync_ignore(){}
-    public function sync_issues(){}
-    public function thumbnail(){}
+    /**
+     * Register as user with a given email
+     * 
+     * @param string $email
+     * @param string $password
+     * @param string|null $name
+     * @return bool|string|null
+     */
+    public function signup(string $email, string $password, ?string $name = null) {
+        $args = [$email, $password];
+        if ($name !== null) {
+            $args[] = '--name=' . $name;
+        }
+        return $this->exec('signup', $args);
+    }
+    /**
+     * Displays/modifies upload/download rate limits: either speed or max connections
+     * 
+     * @param string|null $newLimit New limit to set (e.g., "1M", "100K", or connections count)
+     * @param bool $download Set/Read download speed limit (-d)
+     * @param bool $upload Set/Read upload speed limit (-u)
+     * @param bool $uploadConnections Set/Read max number of connections for an upload transfer
+     * @param bool $downloadConnections Set/Read max number of connections for a download transfer
+     * @param bool $humanReadable Human readable output (-h)
+     * @return bool|string|null
+     */
+    public function speedlimit(?string $newLimit = null, bool $download = false, bool $upload = false, bool $uploadConnections = false, bool $downloadConnections = false, bool $humanReadable = false) {
+        $args = [];
+        if ($download) {
+            $args[] = '-d';
+        }
+        if ($upload) {
+            $args[] = '-u';
+        }
+        if ($uploadConnections) {
+            $args[] = '--upload-connections';
+        }
+        if ($downloadConnections) {
+            $args[] = '--download-connections';
+        }
+        if ($humanReadable) {
+            $args[] = '-h';
+        }
+        if ($newLimit !== null) {
+            $args[] = $newLimit;
+        }
+        return $this->exec('speedlimit', $args);
+    }
+    /**
+     * Controls synchronizations.
+     * 
+     * @param string|null $localPath
+     * @param string|null $remotePath
+     * @param string|null $idOrPath ID or local path for actions
+     * @param bool $delete Delete synchronization (-d)
+     * @param bool $pause Pause synchronization (-p)
+     * @param bool $enable Enable synchronization (-e)
+     * @return bool|string|null
+     */
+    public function sync(?string $localPath = null, ?string $remotePath = null, ?string $idOrPath = null, bool $delete = false, bool $pause = false, bool $enable = false) {
+        $args = [];
+        if ($delete) { $args[] = '-d'; }
+        if ($pause) { $args[] = '-p'; }
+        if ($enable) { $args[] = '-e'; }
+        
+        if ($localPath && $remotePath) {
+            $args[] = $localPath;
+            $args[] = $remotePath;
+        } elseif ($idOrPath) {
+            $args[] = $idOrPath;
+        }
+        
+        return $this->exec('sync', $args);
+    }
+
+    /**
+     * Controls sync configuration.
+     * 
+     * @param bool $waitSeconds Show delayed-uploads-wait-seconds
+     * @param bool $maxAttempts Show delayed-uploads-max-attempts
+     * @return bool|string|null
+     */
+    public function sync_config(bool $waitSeconds = false, bool $maxAttempts = false) {
+        $args = [];
+        if ($waitSeconds) { $args[] = '--delayed-uploads-wait-seconds'; }
+        if ($maxAttempts) { $args[] = '--delayed-uploads-max-attempts'; }
+        return $this->exec('sync-config', $args);
+    }
+
+    /**
+     * Manages ignore filters for syncs
+     * 
+     * @param string $idOrPath ID, localpath or 'DEFAULT'
+     * @param array $filters List of filters
+     * @param string $action show|add|add-exclusion|remove|remove-exclusion
+     * @return bool|string|null
+     */
+    public function sync_ignore(string $idOrPath, array $filters = [], string $action = 'show') {
+        $args = [];
+        if ($action !== 'show') {
+            $args[] = '--' . $action;
+            foreach ($filters as $filter) {
+                $args[] = $filter;
+            }
+        } else {
+            $args[] = '--show';
+        }
+        $args[] = $idOrPath;
+        return $this->exec('sync-ignore', $args);
+    }
+
+    /**
+     * Show all issues with current syncs
+     * 
+     * @param string|null $detail ID or '--all'
+     * @param int|null $limit Row count limit
+     * @param bool $disablePathCollapse disable-path-collapse
+     * @param bool $enableWarning enable-warning
+     * @param bool $disableWarning disable-warning
+     * @return bool|string|null
+     */
+    public function sync_issues(?string $detail = null, ?int $limit = null, bool $disablePathCollapse = false, bool $enableWarning = false, bool $disableWarning = false) {
+        $args = [];
+        if ($detail) {
+            $args[] = '--detail';
+            $args[] = $detail;
+        }
+        if ($limit !== null) {
+            $args[] = '--limit=' . $limit;
+        }
+        if ($disablePathCollapse) { $args[] = '--disable-path-collapse'; }
+        if ($enableWarning) { $args[] = '--enable-warning'; }
+        if ($disableWarning) { $args[] = '--disable-warning'; }
+        return $this->exec('sync-issues', $args);
+    }
+
+    /**
+     * To download/upload the thumbnail of a file.
+     * 
+     * @param string $remotePath
+     * @param string $localPath
+     * @param bool $set Set thumbnail (-s)
+     * @return bool|string|null
+     */
+    public function thumbnail(string $remotePath, string $localPath, bool $set = false) {
+        $args = [];
+        if ($set) { $args[] = '-s'; }
+        $args[] = $remotePath;
+        $args[] = $localPath;
+        return $this->exec('thumbnail', $args);
+    }
+
     public function transfers() {
         return $this->exec('transfers');
     }
-    public function tree(){}
-    public function update(){}
-    public function userattr(){}
-    public function users(){}
-    public function version(){}
-    public function webdav(){}
+
+    /**
+     * Lists files in a remote path in a nested tree decorated output
+     * 
+     * @param string|null $remotePath
+     * @return bool|string|null
+     */
+    public function tree(?string $remotePath = null) {
+        $args = [];
+        if ($remotePath) { $args[] = $remotePath; }
+        return $this->exec('tree', $args);
+    }
+
+    /**
+     * Updates MEGAcmd
+     * 
+     * @param string|null $auto ON|OFF|query
+     * @return bool|string|null
+     */
+    public function update(?string $auto = null) {
+        $args = [];
+        if ($auto) {
+            $args[] = '--auto=' . strtoupper($auto);
+        }
+        return $this->exec('update', $args);
+    }
+
+    /**
+     * Lists/updates user attributes
+     * 
+     * @param string|null $attribute
+     * @param string|null $value
+     * @param string|null $user User email
+     * @param bool $list List valid attributes
+     * @return bool|string|null
+     */
+    public function userattr(?string $attribute = null, ?string $value = null, ?string $user = null, bool $list = false) {
+        $args = [];
+        if ($list) {
+            $args[] = '--list';
+        } elseif ($attribute && $value) {
+            $args[] = '-s';
+            $args[] = $attribute;
+            $args[] = $value;
+        } elseif ($attribute) {
+            $args[] = $attribute;
+        }
+        
+        if ($user) {
+            $args[] = '--user=' . $user;
+        }
+        return $this->exec('userattr', $args);
+    }
+
+    /**
+     * List contacts
+     * 
+     * @param bool $shared Show shared folders (-s)
+     * @param bool $hidden Show all contacts (-h)
+     * @param bool $names Show users names (-n)
+     * @param string|null $delete Delete contact email
+     * @param string|null $timeFormat Time format
+     * @return bool|string|null
+     */
+    public function users(bool $shared = false, bool $hidden = false, bool $names = false, ?string $delete = null, ?string $timeFormat = null) {
+        $args = [];
+        if ($shared) { $args[] = '-s'; }
+        if ($hidden) { $args[] = '-h'; }
+        if ($names) { $args[] = '-n'; }
+        if ($delete) {
+            $args[] = '-d';
+            $args[] = $delete;
+        }
+        if ($timeFormat) {
+            $args[] = '--time-format=' . $timeFormat;
+        }
+        return $this->exec('users', $args);
+    }
+
+    /**
+     * Prints MEGAcmd versioning and extra info
+     * 
+     * @param bool $changelog Show changelog (-c)
+     * @param bool $extended Show extended info (-l)
+     * @return bool|string|null
+     */
+    public function version(bool $changelog = false, bool $extended = false) {
+        $args = [];
+        if ($changelog) { $args[] = '-c'; }
+        if ($extended) { $args[] = '-l'; }
+        return $this->exec('version', $args);
+    }
+
+    /**
+     * Configures a WEBDAV server to serve a location in MEGA
+     * 
+     * @param string|null $remotePath
+     * @param bool $delete Stop serving (-d)
+     * @param bool $all Stop serving all locations (--all)
+     * @param int|null $port Port number
+     * @param bool $public Allow access from outside localhost
+     * @param bool $tls Serve with TLS
+     * @return bool|string|null
+     */
+    public function webdav(?string $remotePath = null, bool $delete = false, bool $all = false, ?int $port = null, bool $public = false, bool $tls = false) {
+        $args = [];
+        if ($delete) {
+            $args[] = '-d';
+            if ($all) {
+                $args[] = '--all';
+            } elseif ($remotePath) {
+                $args[] = $remotePath;
+            }
+        } else {
+            if ($remotePath) { $args[] = $remotePath; }
+            if ($port) { $args[] = '--port=' . $port; }
+            if ($public) { $args[] = '--public'; }
+            if ($tls) { $args[] = '--tls'; }
+        }
+        return $this->exec('webdav', $args);
+    }
     public function whoami() {
         return trim($this->exec('whoami'));
     }
