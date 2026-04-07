@@ -250,31 +250,134 @@ class MegaCmd {
     // public function fuse_enable(){}
     // public function fuse_remove(){}
     // public function fuse_show(){}
-    public function get($remotePath, $localPath = ".") {
-        return $this->exec('get', [$remotePath, $localPath]);
+    /**
+     * Downloads a remote file/folder or a public link
+     * 
+     * @param string $remotePath exportedlink|remotepath
+     * @param string|null $localPath destination folder
+     * @param bool $merge (-m) if the folder already exists, the contents will be merged
+     * @param bool $queue (-q) queue download: execute in the background
+     * @param bool $ignoreQuotaWarn ignore quota surpassing warning
+     * @param bool $usePcre use PCRE expressions
+     * @param string|null $password Password to decrypt the password-protected link
+     * @return bool|string|null
+     */
+    public function get(string $remotePath, ?string $localPath = null, bool $merge = false, bool $queue = false, bool $ignoreQuotaWarn = false, bool $usePcre = false, ?string $password = null) {
+        $args = [];
+        if ($merge) {
+            $args[] = '-m';
+        }
+        if ($queue) {
+            $args[] = '-q';
+        }
+        if ($ignoreQuotaWarn) {
+            $args[] = '--ignore-quota-warn';
+        }
+        if ($usePcre) {
+            $args[] = '--use-pcre';
+        }
+        if ($password !== null) {
+            $args[] = '--password=' . $password;
+        }
+        
+        $args[] = $remotePath;
+        
+        if ($localPath !== null) {
+            $args[] = $localPath;
+        }
+        
+        return $this->exec('get', $args);
     }
-    public function graphics(){}
+    public function graphics(bool $enable){
+        return $this->exec('graphics', [$enable ? 'on' : 'off']);
+    }
+
+    public function graphicsStatus(){
+        return $this->exec('graphics');
+    }
     public function help() {
         return $this->exec('help');
     }
-    public function https(){}
-    public function import($link, $dest = "/") {
-        return $this->exec('import', [$link, $dest]);
+    public function https(){ return $this->exec('https');}
+    public function import($link, $dest = "/", $password = null) {
+        $args = [];
+        if ($password !== null) {
+            $args[] = '--password=' . $password;
+        }
+        $args[] = $link;
+        $args[] = $dest;
+        return $this->exec('import', $args);
     }
-    public function invite(){}
-    public function ipc(){}
-    public function killsession(){}
-    public function lcd(){}
-    public function log(){}
-    public function login($email, $password) {
+    // public function invite(){} // unnecesary
+    // public function ipc(){}
+
+    /**
+     * To See sessions use 'whoami -l'
+     * and use the sessionId
+     * @param string $sid
+     * @return bool|string|null
+     */
+    public function killsession(string $sid){
+        return $this->exec('killsession', [$sid]);
+    } 
+
+    /**
+     * It will be used for uploads and downloads
+*
+*If not using interactive console, the current local folder will be
+ *that of the shell executing mega comands
+     * @param string $path
+     * @return bool|string|null
+     */
+    public function lcd(string $path){
+        return $this->exec('lcd', [$path]);
+    }
+    /**
+     * Shows the log file
+     * @return bool|string|null
+     */
+    public function log(){ return $this->exec('log');}
+
+    /**
+     * Summary of login
+     * @param string $email
+     * @param string $password
+     * @return bool|string|null
+     */
+    public function login(string $email, string $password, int $authCode = 0, int $authKey = 0, bool $resume = false, string $otherPassword = '', string $sessionId = '') {
         $this->logout(); // Asegurarse de cerrar sesión previa
+        $args = [];
+        if($authCode){
+            $args[] = '--auth-CODE='.$authCode;
+        }
+        if($authKey){
+            $args[] = '--auth-key='.$authKey;
+        }
+        if($resume){
+            $args[] = '--resume';
+        }
+        if($otherPassword){
+            $args[] = '--password='.$otherPassword;
+        }
+        if($sessionId){
+            return $this->exec('login', [$sessionId]);
+        }
         return $this->exec('login', [$email, $password]);
     }
     public function logout() {
         return $this->exec('logout');
     }
 
-    public function lpwd(){}
+    /**
+     * Prints the current local folder
+     * @return bool|string|null
+     */
+    public function lpwd(){ return $this->exec('lpwd');}
+    /**
+     * Lists the contents of a remote folder
+     * @param string|null $path
+     * @return array|string|null
+     */
     public function ls($path = null) {
         $args = [];
         if ($path) {
@@ -285,30 +388,149 @@ class MegaCmd {
 
         return array_filter(explode("\n", trim($output)));
     }
-    public function masterkey(){}
-    public function mediainfo(){}
-    public function mkdir($path) {
-        return $this->exec('mkdir', [$path]);
-    }
-    public function mount(){}
-    public function mv(){}
-    public function passwd(){}
-    public function preview(){}
 
-    public function proxy(){}
-    public function psa(){}
+    /**
+     * Show the masterkey of the account recovery key
+     * @param string $localpatToSave
+     * @return bool|string|null
+     */
+    public function masterkey(string $localpatToSave){ return $this->exec('masterkey', [$localpatToSave]);}
+
+    /**
+     * Get media info of a remote file
+     * @param string $remotePath
+     * @return bool|string|null
+     */
+    public function mediainfo(string $remotePath){ return $this->exec('mediainfo', [$remotePath]); }
+    
+    /**
+     * Creates a remote folder
+     * @param string $path
+     * @return bool|string|null
+     */
+    public function mkdir($remotePath) {
+        return $this->exec('mkdir', [$remotePath]);
+    }
+
+    /**
+     * Show of roots of the MEGA cloud drive
+     * @return bool|string|null
+     */
+    public function mount(){ return $this->exec('mount');}
+    
+    /**
+     * Moves a remote file/folder
+     * @param string $remoteSrcPath
+     * @param string $remoteDestinationPath
+     * @return bool|string|null
+     */
+
+    /**
+     * move files or folders
+     * @param string $remoteSrcPath
+     * @param string $remoteDestinationPath
+     * @return bool|string|null
+     */
+    public function mv(string $remoteSrcPath, string $remoteDestinationPath){ return $this->exec('mv', [$remoteSrcPath, $remoteDestinationPath]);}
+    
+    /**
+     * change password account
+     * @return void
+     */
+    public function passwd(string $newPassword, int $authCode = null){
+        $args = [$newPassword];
+        if ($authCode !== null) {
+            $args[] = $authCode;
+        }
+        return $this->exec('passwd', $args);
+    }
+
+    /**
+     * See preview or change preview of a file
+     * @return void
+     */
+    public function preview($remotePathFile, $newPreviewFile = null){
+        $args = [$remotePathFile];
+        if ($newPreviewFile !== null) {
+            $args[] = '-s'.$newPreviewFile;
+        }
+        return $this->exec('preview', $args);
+    }
+
+
+    public function proxy(string $url, string $username = '', string $password = '', bool $auto = false ){
+        $args = [$url];
+        if ($username !== '') {
+            $args[] = '--username='.$username;
+        }
+        if ($password !== '') {
+            $args[] = '--password='.$password;
+        }
+        if ($auto) {
+            $args[] = '--auto';
+        }
+        return $this->exec('proxy',[$args]);
+    } 
+    public function psa(){} // innecesary
+    /**
+     * Uploads a local file or folder to MEGA
+     * @param string $localPath
+     * @param string $remotePath
+     * @return bool|string|null
+     */
     public function put($localPath, $remotePath = "/") {
         return $this->exec('put', [$localPath, $remotePath]);
     }
-    public function pwd(){}
-    public function quit(){}
-    public function reload(){}
-    public function rm($path) {
-        return $this->exec('rm', [$path]);
+
+    /**
+     * Prints the current remote folder
+     * @return bool|string|null
+     */
+    public function pwd(){ return $this->exec('pwd');}
+
+    /**
+     * exit current cmd and server
+     * @return void
+     */
+    public function quit(){ return $this->exec('quit');}
+
+    /**
+     * Reloads the remote directory tree
+     * @return void
+     */
+    public function reload(){ return $this->exec('reload');}
+    
+    /**
+     * Removes a file or folder
+     * @param string $remotePath
+     * @return bool|string|null
+     */
+    public function rm($remotePath, bool $recursive = false, bool $force = false) {
+        $args = [$remotePath];
+        if ($recursive) {
+            $args[] = '-r';
+        }
+        if ($force) {
+            $args[] = '-f';
+        }
+        return $this->exec('rm', $args);
     }
-        public function session(){}
-    public function share(){}
-    public function showpcr(){}
+
+
+    public function session(){ 
+        return $this->exec('session');
+    }
+    // public function share(){} // unnecesary function
+    
+    /**
+     * Show afiliated emails 
+     * @return void
+     */
+    public function showpcr(){
+        $this->exec('showpcr');
+    }
+
+
     public function signup(){}
     public function speedlimit(){}
     public function sync(){}
