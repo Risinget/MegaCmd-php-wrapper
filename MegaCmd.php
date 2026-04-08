@@ -596,7 +596,8 @@ class MegaCmd {
     }
     /**
      * Controls synchronizations.
-     * 
+     * remotePath can be a folder and the content of localPath be copied to remotePath
+     * not included as Folder 
      * @param string|null $localPath
      * @param string|null $remotePath
      * @param string|null $idOrPath ID or local path for actions
