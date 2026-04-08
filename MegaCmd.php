@@ -50,6 +50,10 @@ class MegaCmd {
 
     
     /**
+     * ls -l --show-handlesw
+     */
+
+    /**
      * attr.md
      * @return bool|string|null
      */
@@ -58,11 +62,22 @@ class MegaCmd {
     /**
      * Return backups history
      */
-    public function backupHistory(){ return $this->exec('backup -h'); }
+    public function backupHistory(){ 
+        // No backup configured.
+        if(str_contains('No backup configured.', $this->exec('backup -h'))){
+            return ['No backup configured.'];
+        }
+        return $this->exec('backup -h');
+     }
     /**
      * Return backups list
      */
-    public function backupList(){ return $this->exec('backup -l'); }
+    public function backupList(){ 
+        if(str_contains('No backup configured.', $this->exec('backup -l'))){
+            return ['No backup configured.'];
+        }
+        return $this->exec('backup -l'); 
+    }
     /**
      * Delete a backup by tag id
      */
@@ -808,6 +823,9 @@ class MegaCmd {
         return $this->exec('webdav', $args);
     }
     public function whoami() {
-        return trim($this->exec('whoami'));
+        return str_replace('Account e-mail: ', '',trim($this->exec('whoami')));
+    }
+    public function sessions(){
+        return trim($this->exec('whoami', '-l'));
     }
 }
