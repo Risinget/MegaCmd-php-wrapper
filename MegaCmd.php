@@ -5,47 +5,235 @@
  * Una clase para interactuar con MEGAcmd (mega.nz) mediante comandos de consola.
  */
 class MegaCmd {
-    private $executablePath;
-    private $isWindows;
+    private string $executablePath;
+    private bool $isWindows;
+    private string $localBasePath;
+    private string $workingDirectory;
 
-    public function __construct($path = null) {
+
+    private array $errorCodes = [
+        0 => [
+            'error_type'=>'MCMD_OK',
+            'message'=>'Everything OK'
+        ],              // Everything OK
+        2 => [
+            'error_type'=>'MCMD_CUSTOM_UNKNOW',
+            'message'=>'Failed to check email corresponds to link'
+        ],              // Failed to check email corresponds to link
+        9 => [
+            'error_type'=>'MCMD_CUSTOM_UNKNOW',
+            'message'=>'Failed to abort backup'
+        ],              // Failed to abort backup
+
+        12 => [
+            'error_type'=>'MCMD_CONFIRM_NO',
+            'message'=>'User response to confirmation is "no"'
+        ],    // User response to confirmation is "no"
+        51 => [
+            'error_type'=>'MCMD_EARGS',
+            'message'=>'Wrong arguments'
+        ],         // Wrong arguments
+        52 => [
+            'error_type'=>'MCMD_INVALIDEMAIL',
+            'message'=>'Invalid email'
+        ],  // Invalid email
+        53 => [
+            'error_type'=>'MCMD_NOTFOUND',
+            'message'=>'Resource not found'
+        ],      // Resource not found
+        54 => [
+            'error_type'=>'MCMD_INVALIDSTATE',
+            'message'=>'Invalid state'
+        ],  // Invalid state
+        55 => [
+            'error_type'=>'MCMD_INVALIDTYPE',
+            'message'=>'Invalid type'
+        ],   // Invalid type
+        56 => [
+            'error_type'=>'MCMD_NOTPERMITTED',
+            'message'=>'Operation not allowed'
+        ],  // Operation not allowed
+        57 => [
+            'error_type'=>'MCMD_NOTLOGGEDIN',
+            'message'=>'Needs logging in'
+        ],   // Needs logging in
+        58 => [
+            'error_type'=>'MCMD_NOFETCH',
+            'message'=>'Nodes not fetched'
+        ],       // Nodes not fetched
+        59 => [
+            'error_type'=>'MCMD_EUNEXPECTED',
+            'message'=>'Unexpected failure'
+        ],   // Unexpected failure
+        60 => [
+            'error_type'=>'MCMD_REQCONFIRM',
+            'message'=>'Confirmation required'
+        ],    // Confirmation required
+        61 => [
+            'error_type'=>'MCMD_REQSTRING',
+            'message'=>'String required'
+        ],     // String required
+        62 => [
+            'error_type'=>'MCMD_PARTIALOUT',
+            'message'=>'Partial output provided'
+        ],    // Partial output provided
+        63 => [
+            'error_type'=>'MCMD_PARTIALERR',
+            'message'=>'Partial error output provided'
+        ],    // Partial error output provided
+        64 => [
+            'error_type'=>'MCMD_EXISTS',
+            'message'=>'Resource already exists'
+        ],        // Resource already exists
+        71 => [
+            'error_type'=>'MCMD_REQRESTART',
+            'message'=>'Restart required'
+        ],    // Restart required
+    ];
+    public function __construct(
+        ?string $path = null,
+        ?string $localBasePath = null,
+        ?string $workingDirectory = null
+    ) {
         $this->isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        
+
         if ($path) {
             $this->executablePath = rtrim($path, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
         } else {
             if ($this->isWindows) {
-                // Ruta típica de instalación del usuario
                 $localAppData = getenv('LOCALAPPDATA');
                 $defaultPath = $localAppData . DIRECTORY_SEPARATOR . 'MEGAcmd' . DIRECTORY_SEPARATOR;
+
                 if (file_exists($defaultPath . 'mega-help.bat')) {
                     $this->executablePath = $defaultPath;
                 } else {
-                    $this->executablePath = ""; // Confiar en el PATH
+                    $this->executablePath = '';
                 }
             } else {
-                $this->executablePath = "";
+                $this->executablePath = '';
             }
         }
+
+        $this->localBasePath = $localBasePath
+            ? rtrim($localBasePath, DIRECTORY_SEPARATOR)
+            : __DIR__;
+
+        $this->workingDirectory = $workingDirectory
+            ? rtrim($workingDirectory, DIRECTORY_SEPARATOR)
+            : $this->localBasePath;
     }
 
-    public function exec($command, $args = []) {
-        $cmdName = "mega-" . $command;
+    public function exec(string $command, array|string $args = []): array
+    {
+        $cmdName = 'mega-' . $command;
         $fullPath = $this->executablePath . $cmdName;
 
-        // En Windows, los comandos de MEGAcmd suelen ser .bat que llaman al server
-        if ($this->isWindows && $this->executablePath !== "" && file_exists($fullPath . ".bat")) {
-            $fullCommand = 'cmd /c "' . $fullPath . '.bat"';
+        if ($this->isWindows && $this->executablePath !== '' && file_exists($fullPath . '.bat')) {
+            $fullCommand = '"' . $fullPath . '.bat"';
         } else {
             $fullCommand = $fullPath;
         }
-        
-        // Escapar argumentos
-        $escapedArgs = array_map('escapeshellarg', $args);
-        $cmdLine = $fullCommand . " " . implode(" ", $escapedArgs) . " 2>&1";
 
-        $output = shell_exec($cmdLine);
-        return $output;
+        if (!is_array($args)) {
+            $args = [$args];
+        }
+
+        $args = array_values(array_filter($args, fn($v) => $v !== null && $v !== ''));
+
+        $escapedArgs = array_map(
+            fn($arg) => escapeshellarg((string)$arg),
+            $args
+        );
+
+        $cmdLine = $fullCommand . (count($escapedArgs) ? ' ' . implode(' ', $escapedArgs) : '');
+
+        $workingDir = $this->resolveWorkingDirectory();
+
+        if ($this->isWindows) {
+            $finalCommand = 'cd /d ' . escapeshellarg($workingDir) . ' && ' . $cmdLine . ' 2>&1';
+        } else {
+            $finalCommand = 'cd ' . escapeshellarg($workingDir) . ' && ' . $cmdLine . ' 2>&1';
+        }
+
+        $output = [];
+        $exitCode = 0;
+
+        exec($finalCommand, $output, $exitCode);
+
+        return [
+            'success' => $exitCode === 0 ? 0 : 1,
+            'exit_code' => $exitCode,
+            'error_message' => $this->errorCodes[$exitCode]['message'] ?? 'Unknown error',
+            'output' => implode(PHP_EOL, $output),
+            'cmd' => $finalCommand,
+            'working_directory' => $workingDir,
+        ];
+    }
+
+    private function resolveWorkingDirectory(): string
+    {
+        if ($this->workingDirectory === '') {
+            return $this->localBasePath;
+        }
+
+        if ($this->isAbsolutePath($this->workingDirectory)) {
+            return $this->workingDirectory;
+        }
+
+        return $this->localBasePath . DIRECTORY_SEPARATOR . $this->workingDirectory;
+    }
+
+    public function setLocalBasePath(string $path): self
+    {
+        $this->localBasePath = rtrim($path, DIRECTORY_SEPARATOR);
+        return $this;
+    }
+
+    public function setWorkingDirectory(string $path): self
+    {
+        $this->workingDirectory = rtrim($path, DIRECTORY_SEPARATOR);
+        return $this;
+    }
+
+    public function getLocalBasePath(): string
+    {
+        return $this->localBasePath;
+    }
+
+    public function getWorkingDirectory(): string
+    {
+        return $this->workingDirectory;
+    }
+
+    private function isAbsolutePath(string $path): bool
+    {
+        if ($path === '') {
+            return false;
+        }
+
+        if ($this->isWindows) {
+            return preg_match('/^[A-Za-z]:[\/\\\\]/', $path) === 1
+                || str_starts_with($path, '\\\\');
+        }
+
+        return str_starts_with($path, '/');
+    }
+
+    private function resolveLocalPath(string $path): string
+    {
+        $path = trim($path);
+
+        if ($path === '') {
+            return $this->localBasePath;
+        }
+
+        $path = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+
+        if ($this->isAbsolutePath($path)) {
+            return $path;
+        }
+
+        return $this->localBasePath . DIRECTORY_SEPARATOR . $path;
     }
 
     
@@ -58,25 +246,192 @@ class MegaCmd {
      * @return bool|string|null
      */
     public function attr(){ return $this->exec('attr');}
-    public function autocomplete(){ return $this->exec('autocomplete');}
+    // public function autocomplete(){ return $this->exec('autocomplete');}  // not suported cmd
     /**
      * Return backups history
      */
-    public function backupHistory(){ 
-        // No backup configured.
-        if(str_contains('No backup configured.', $this->exec('backup -h'))){
-            return ['No backup configured.'];
+
+
+
+    public function backupCreate(string $localPath, string $remotePath, string $period, int $numBackups){
+        // falta --time-format=
+
+        $localPathResolved = $this->resolveLocalPath($localPath);
+        return $this->exec('backup', [$localPathResolved, $remotePath, "--period=".$period, "--num-backups=".$numBackups]);
+    }
+
+
+ private function parseBackupHistory(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [];
+    $current = null;
+    $mode = null;
+
+    foreach ($lines as $line) {
+        if (str_starts_with($line, 'TAG')) {
+            continue;
         }
-        return $this->exec('backup -h');
-     }
+
+        if (preg_match('/^(\d+)\s+(.*?)\s+(\/\S+)\s+([A-Z]+)$/', $line, $m)) {
+            if ($current !== null) {
+                $result[] = $current;
+            }
+
+            $current = [
+                'tag' => (int)$m[1],
+                'local' => $m[2],
+                'remote' => $m[3],
+                'status' => $m[4],
+                'history' => [],
+            ];
+            $mode = null;
+            continue;
+        }
+
+        if (str_contains($line, 'HISTORY OF BACKUPS')) {
+            $mode = 'history';
+            continue;
+        }
+
+        if (str_starts_with($line, 'NAME')) {
+            continue;
+        }
+
+        if ($mode === 'history' && $current !== null) {
+            if (preg_match('/^(\S+)\s+(.+?)\s+(COMPLETE|FAILED|ACTIVE|INCOMPLETE|CANCELLED)\s+(\d+)\s+(\d+)$/', $line, $m)) {
+                $current['history'][] = [
+                    'name' => $m[1],
+                    'date' => trim($m[2]),
+                    'status' => $m[3],
+                    'files' => (int)$m[4],
+                    'folders' => (int)$m[5],
+                ];
+            }
+        }
+    }
+
+    if ($current !== null) {
+        $result[] = $current;
+    }
+
+    return $result;
+}
+
+    public function backupHistory()
+    {
+        $res = $this->exec('backup', ['-h']);
+
+        // return $res;
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $parsed = $this->parseBackupHistory($res['output']);
+        $output = $res;
+        $output['output'] = $parsed;
+        return $output;
+    }
     /**
      * Return backups list
      */
-    public function backupList(){ 
-        if(str_contains('No backup configured.', $this->exec('backup -l'))){
-            return ['No backup configured.'];
+
+ private function parseBackupList(string $output): array
+{
+    $lines = array_filter(array_map('trim', explode("\n", $output)));
+
+    $result = [];
+    $current = null;
+    $mode = null;
+
+    foreach ($lines as $line) {
+
+        // ------------------------
+        // NUEVO BACKUP (TAG)
+        // ------------------------
+        if (preg_match('/^(\d+)\s+(.*?)\s+(\/\S+)\s+(\w+)$/', $line, $m)) {
+
+            // guardar el anterior
+            if ($current !== null) {
+                $result[] = $current;
+            }
+
+            $current = [
+                'tag' => (int)$m[1],
+                'local' => $m[2],
+                'remote' => $m[3],
+                'status' => $m[4],
+                'config' => [],
+                'current' => []
+            ];
+
+            $mode = 'config';
+            continue;
         }
-        return $this->exec('backup -l'); 
+
+        // ------------------------
+        // CONFIG
+        // ------------------------
+        if (str_starts_with($line, 'Max Backups:')) {
+            $current['config']['max_backups'] = (int)trim(explode(':', $line)[1]);
+            continue;
+        }
+
+        if (str_starts_with($line, 'Period:')) {
+            $current['config']['period'] = trim(str_replace('"', '', explode(':', $line)[1]));
+            continue;
+        }
+
+        if (str_starts_with($line, 'Next backup scheduled for:')) {
+            $current['config']['next'] = trim(explode(':', $line, 2)[1]);
+            continue;
+        }
+
+        // ------------------------
+        // CAMBIO A CURRENT
+        // ------------------------
+        if (str_contains($line, 'CURRENT/LAST BACKUP')) {
+            $mode = 'current';
+            continue;
+        }
+
+        // ------------------------
+        // CURRENT DATA
+        // ------------------------
+        if ($mode === 'current' &&
+            preg_match('/^(\d+)\/(\d+)\s+(\d+)\s+([\d\.\/\sA-Z]+)\s+([\d\.]+%)/', $line, $m)
+        ) {
+            $current['current'] = [
+                'files_uploaded' => (int)$m[1],
+                'files_total' => (int)$m[2],
+                'folders_created' => (int)$m[3],
+                'size' => trim($m[4]),
+                'progress' => $m[5],
+            ];
+        }
+    }
+
+    // guardar último bloque
+    if ($current !== null) {
+        $result[] = $current;
+    }
+
+    return $result;
+}
+
+    public function backupList(){ 
+        $res =  $this->exec('backup -l');
+        
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $parsed = $this->parseBackupList($res['output']);
+        $output = $res;
+        $output['output'] = $parsed;
+        return $output;
+        
     }
     /**
      * Delete a backup by tag id
@@ -97,10 +452,7 @@ class MegaCmd {
      * 1y -> 1 year
      *  or 1m12d3h45m30s
      */
-    public function backup(string $localPath, string $remotePath, string $period, int $numBackups){
-        // falta --time-format=
-        return $this->exec('backup', [$localPath, $remotePath, '--period='.$period, '--num-backups='.$numBackups]);
-    }
+
 
     /**
     * Cancel your account mega
@@ -122,15 +474,22 @@ class MegaCmd {
         }
         return $this->exec('cd');
     }
-    public function clear(){ return $this->exec('clear');}
+    // public function clear(){ return $this->exec('clear');} // not supported cmd
     /**
      * See codepage interpreter terminal
      */
     public function codepage(){ return $this->exec('codepage');}
     public function completion(){ return $this->exec('completion');}
+
+    /**
+     * exported_folders_sdks MIN 0 MAX 20 -> paralel download
+      * max_nodes_in_cache MAX QUANTITY    -> nodes, subnodes from folders
+     * @param string $key
+     * @param int $value
+     * @return array
+     */
     public function configure(string $key, int $value){ 
-        // exported_folders_sdks MIN 0 MAX 20 -> paralel download
-        // max_nodes_in_cache MAX QUANTITY    -> nodes, subnodes from folders
+        
         return $this->exec('configure', [$key, $value]);
     }
     /**
@@ -162,16 +521,143 @@ class MegaCmd {
     public function deleteversions(bool $force = false, bool $all = false){
         return $this->exec('deleteversions', [$force ? '--force' : '', $all ? '--all' : '']);
     }
+
+
+    private function parseDf(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [
+        'spaces' => [],
+        'used' => [],
+        'versions_size' => null
+    ];
+
+    foreach ($lines as $line) {
+
+        // ------------------------
+        // CLOUD / INBOX / RUBBISH
+        // ------------------------
+        if (preg_match('/^(Cloud drive|Inbox|Rubbish bin):\s+(.+?)\s+in\s+(\d+)\s+file\(s\)\s+and\s+(\d+)\s+folder\(s\)$/', $line, $m)) {
+
+            $key = strtolower(str_replace(' ', '_', $m[1]));
+
+            $result['spaces'][$key] = [
+                'size' => trim($m[2]),
+                'files' => (int)$m[3],
+                'folders' => (int)$m[4],
+            ];
+        }
+
+        // ------------------------
+        // USED STORAGE
+        // ------------------------
+        elseif (preg_match('/^USED STORAGE:\s+(.+?)\s+([\d\.]+)%\s+of\s+(.+)$/', $line, $m)) {
+            $result['used'] = [
+                'size' => trim($m[1]),
+                'percentage' => (float)$m[2],
+                'total' => trim($m[3]),
+            ];
+        }
+
+        // ------------------------
+        // FILE VERSIONS
+        // ------------------------
+        elseif (preg_match('/^Total size taken up by file versions:\s+(.+)$/', $line, $m)) {
+            $result['versions_size'] = trim($m[1]);
+        }
+    }
+
+    return $result;
+}
+
+
+
     /**
      * Show storage information
      * @return bool|string|null
      */
-    public function df(){ return $this->exec('df');}
+    public function df($showInGb = false)
+    {
+        $args = [];
+        if($showInGb){
+            $args[] = '-h';
+        }
+        $res = $this->exec('df', $args);
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $parsed = $this->parseDf($res['output']);
+        $output = $res;
+        $output['output'] = $parsed;
+        return $output;
+    }
+
+    private function parseDu(string $output): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $output);
+        $lines = array_map('trim', $lines);
+        $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+        $result = [
+            'path' => null,
+            'size' => null,
+            'total' => null,
+        ];
+
+        foreach ($lines as $line) {
+            if (str_starts_with($line, 'FILENAME')) {
+                continue;
+            }
+
+            if (preg_match('/^-+$/', $line)) {
+                continue;
+            }
+
+            if (preg_match('/^Total storage used:\s+(.+)$/', $line, $m)) {
+                $value = preg_replace('/\s+/', ' ', trim($m[1]));
+                $result['total'] = ctype_digit($value) ? (int)$value : $value;
+                continue;
+            }
+
+            if (preg_match('/^(.+?):\s+(.+)$/', $line, $m)) {
+                $path = trim($m[1]);
+                $value = preg_replace('/\s+/', ' ', trim($m[2]));
+
+                $result['path'] = $path;
+                $result['size'] = ctype_digit($value) ? (int)$value : $value;
+                continue;
+            }
+        }
+
+        return $result;
+    }
+
     /**
-     * Show disk usage
-     * @return bool|string|null
+     * Return size of a folder used in KB
+     * @param string $remotePath
+     * @param bool $showInKb
+     * @return array
      */
-    public function du(){ return $this->exec('du');}
+    public function du(string $remotePath = '', $showInKb = false){
+        $args = [];
+        if($remotePath){
+            $args[] = $remotePath;
+        }
+        if($showInKb){
+            $args[] = '-h';
+        }
+        $res = $this->exec('du', $args);
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $parsed = $this->parseDu($res['output']);
+        $output = $res;
+        $output['output'] = $parsed;
+        return $output;
+    }
     public function errorcode(int $errorcode){
         return $this->exec('errorcode', [$errorcode]);
     }
@@ -180,12 +666,100 @@ class MegaCmd {
      */
     public function exclude(array $patterns){} // deprecated
     // public function exit(){ return $this->exec('exit');} // only on MegaCMDShell.exe
-    public function export($path) {
-        return $this->exec('export', [$path]);
+
+
+    public function isExported($remotePath){
+        $res = $this->exec('export', [$remotePath]);
+        $isExported = $res['error_message'] == 'Resource already exists' || $res['error_message'] == 'Everything OK';
+        $output = $res;
+        $output['output'] = $isExported ? 'true' . ' ' . $res['output']: 'false' . ' ' . $res['output'];
+        return $output;
     }
 
+
+  private function parseExportList(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [];
+
+    foreach ($lines as $line) {
+
+        // ------------------------
+        // FOLDER
+        // ------------------------
+        if (preg_match(
+            '/^(.*?)\s+\(folder,\s+shared as exported permanent folder link:\s+(https:\/\/mega\.nz\/folder\/[^\s\)]+)\)$/',
+            $line,
+            $m
+        )) {
+
+            [$clean, $key] = $this->splitMegaLink($m[2]);
+
+            $result[] = [
+                'name' => trim($m[1]),
+                'type' => 'folder',
+                'size' => null,
+
+                'link_full' => trim($m[2]),
+                'link_clean' => $clean,
+                'decryption_key' => $key,
+
+                'auth_key' => null,
+            ];
+            continue;
+        }
+
+        // ------------------------
+        // FILE
+        // ------------------------
+        if (preg_match(
+            '/^(.*?)\s+\((.+?),\s+shared as exported permanent file link:\s+(https:\/\/mega\.nz\/file\/[^\s\)]+)(?:\s+AuthKey=([^\s\)]+))?\)$/',
+            $line,
+            $m
+        )) {
+
+            [$clean, $key] = $this->splitMegaLink($m[3]);
+
+            $result[] = [
+                'name' => trim($m[1]),
+                'type' => 'file',
+                'size' => trim($m[2]),
+
+                'link_full' => trim($m[3]),
+                'link_clean' => $clean,
+                'decryption_key' => $key,
+
+                'auth_key' => isset($m[4]) ? trim($m[4]) : null,
+            ];
+        }
+    }
+
+    return $result;
+}
+
+private function splitMegaLink(string $url): array
+{
+    // ejemplo: https://mega.nz/file/ID#KEY
+    $parts = explode('#', $url);
+
+    $clean = $parts[0];
+    $key = $parts[1] ?? null;
+
+    return [$clean, $key];
+}
     public function exportList(){
-        return $this->exec('export');
+        $this->cd();
+        $res = $this->exec('export');
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $parsed = $this->parseExportList($res['output']);
+        $output = $res;
+        $output['output'] = $parsed;
+        return $output;
     }
     /**
      * $remotePath -> path/file to export
@@ -201,7 +775,8 @@ class MegaCmd {
      * 1y -> 1 year
      */
     public function exportAdd(string $remotePath, bool $megaHosted = false, string $password = null, string $expire = null){
-        $args = ['-a '.$remotePath];
+
+        $args = ['-a', '-f', $remotePath];
         if($megaHosted){
             $args[] = '--mega-hosted';
         }
@@ -215,7 +790,18 @@ class MegaCmd {
     }
 
     public function exportRemove(string $remotePath){
-        return $this->exec('export', ['-d '.$remotePath]);
+        
+        
+        $res = $this->exec('export', ['-d', $remotePath]);
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $removed = $res['error_message'] == 'Everything OK';
+        $output = $res;
+        $output['output'] = $removed ? 'true' : 'false';
+        return $output;
+
+
     }
     
     /**
@@ -824,9 +1410,18 @@ class MegaCmd {
         return $this->exec('webdav', $args);
     }
     public function whoami() {
-        return str_replace('Account e-mail: ', '',trim($this->exec('whoami')));
+        // $res = $this->exec('whoami');
+        // if($res['success']){
+        //     return str_replace('Account e-mail: ', '',$res['output']);
+        // }
+        // return $res;
+        return $this->exec('whoami');
     }
     public function sessions(){
-        return trim($this->exec('whoami', '-l'));
+        $res = $this->exec('whoami', '-l');
+        if($res['success']){
+            return trim($res['output']);
+        }
+        return $res;
     }
 }

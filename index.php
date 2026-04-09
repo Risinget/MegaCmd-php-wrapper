@@ -1,10 +1,15 @@
-<?php
+<?php 
+
+
+function test(){
 /**
  * MegaCmd PHP Wrapper - Full Exhaustive Class Order Test
  * Este script prueba TODAS las funciones de la clase MegaCmd en el orden exacto en que están definidas.
  */
 
 require_once 'MegaCmd.php';
+
+require_once 'config.php';
 
 echo "<pre>"; // Para visualización en navegador
 echo "--- INICIANDO TEST EXHAUSTIVO EN ORDEN DE CLASE ---\n\n";
@@ -14,88 +19,99 @@ $mega = new MegaCmd();
 echo "1. [__construct] Objeto creado correctamente.\n";
 
 // 2. exec
-echo "2. [exec] Prueba ('whoami'): " . $mega->whoami() . "\n";
+echo "2. [exec] Prueba ('whoami'): " . print_r($mega->whoami(), true) . "\n";
 
+
+// echo '2.1 [LOGIN]' . print_r($mega->login($mega_email, $mega_password),true) . "\n";
 // 3. attr
-echo "3. [attr]: " . $mega->attr() . "\n";
+echo "3. [attr]: " . print_r( $mega->attr(),true) . "\n";
 
 // 4. autocomplete
-echo "4. [autocomplete]: " . $mega->autocomplete() . "\n";
+// echo "4. [autocomplete]: " . $mega->autocomplete() . "\n";  unsupported cmd
+
+echo '9.0 [mkdir]'. print_r($mega->mkdir('commands'),true) . "\n";
+
+echo "9. [backupCreate]: ". print_r($mega->backupCreate('prueba','/commands','1d',1), true);
 
 // 5. backupHistory
-echo "5. [backupHistory]: " . $mega->backupHistory() . "\n";
+echo "5. [backupHistory]: " . print_r($mega->backupHistory(),true) . "\n";
 
 // 6. backupList
-echo "6. [backupList]: " . $mega->backupList() . "\n";
-
-// 7. backupDelete
-echo "7. [backupDelete]: // \$mega->backupDelete(int \$tag);\n";
+echo "6. [backupList]: " . print_r($mega->backupList(),true) . "\n";
 
 // 8. backupAbort
-echo "8. [backupAbort]: // \$mega->backupAbort(int \$tag);\n";
+echo "8. [backupAbort]: " . print_r($mega->backupAbort($mega->backupList()['output'][0]['tag']),true) . "\n";
+
+// 7. backupDelete
+echo "7. [backupDelete]: " . print_r($mega->backupDelete($mega->backupList()['output'][0]['tag']),true) . "\n";
 
 // 9. backup
-echo "9. [backup]: // \$mega->backup(string \$localPath, string \$remotePath, string \$period, int \$numBackups);\n";
 
 // 10. cancel
-echo "10. [cancel]: // \$mega->cancel(); (DANGER / Disabled)\n";
+// echo "10. [cancel]: // \$mega->cancel(); (DANGER / Disabled)\n";
 
 // 11. cat
-echo "11. [cat]: // \$mega->cat(string \$remotePath);\n";
+echo "11. [cat]: " . print_r($mega->cat('attr.md'),true) . "\n";
 
 // 12. cd
-echo "12. [cd]: " . $mega->cd() . "\n";
+echo "12. [cd]: " . print_r($mega->cd('/prueba'),true) . "\n";
 
-// 13. clear
-echo "13. [clear]: " . $mega->clear() . "\n";
 
 // 14. codepage
-echo "14. [codepage]: " . $mega->codepage() . "\n";
+// echo "14. [codepage]: " . print_r($mega->codepage(),true) . "\n"; // not exist
 
 // 15. completion
-echo "15. [completion]: " . $mega->completion() . "\n";
+// echo "15. [completion]: " . print_r($mega->completion(),true) . "\n"; // not exist
 
 // 16. configure
-echo "16. [configure]: // \$mega->configure(string \$key, int \$value);\n";
+// echo "16. [configure]:  ".print_r($mega->configure('max_nodes_in_cache',20),true)."\n"; // not in windows
+
+
 
 // 17. confirm
-echo "17. [confirm]: // \$mega->confirm(string \$link, string \$email, string \$password);\n";
+echo "17. [confirm]: " . print_r($mega->confirm('link','[EMAIL_ADDRESS]','password'),true)."\n";
 
 // 18. confirmcancel
-echo "18. [confirmcancel]: // \$mega->confirmcancel(string \$link, string \$password);\n";
+// echo "18. [confirmcancel]: // \$mega->confirmcancel(string \$link, string \$password);\n"; // DANGEROUS
 
 // 19. cp
-echo "19. [cp]: // \$mega->cp(string \$remotePath, string \$remoteDest);\n";
+echo "19. [cp]: // " . print_r($mega->cp('/attr.md', '/commands/attrCopiado.md'),true) . "\n";
 
 // 20. debug
-echo "20. [debug]: " . $mega->debug() . "\n";
+echo "20. [debug]: " . print_r($mega->debug(),true) . "\n";
 
 // 21. deleteversions
-echo "21. [deleteversions]: " . $mega->deleteversions() . "\n";
+echo "21. [deleteversions]: " . print_r($mega->deleteversions(),true) . "\n";
 
 // 22. df
-echo "22. [df]:\n" . $mega->df() . "\n";
+echo "22. [df]:\n" . print_r($mega->df(false),true) . "\n";
 
 // 23. du
-echo "23. [du]:\n" . $mega->du() . "\n";
+echo "23. [du]:\n" . print_r($mega->du('/prueba',true),true) . "\n";
 
 // 24. errorcode
-echo "24. [errorcode](0): " . $mega->errorcode(0) . "\n";
+echo "24. [errorcode](0): " . print_r($mega->errorcode(0),true) . "\n";
 
 // 25. exclude
-echo "25. [exclude]: // Deprecated / Unused\n";
+// echo "25. [exclude]: // Deprecated / Unused\n";
 
 // 26. export
-echo "26. [export]: " . $mega->export(null) . "\n";
+echo "26. [isExport]: " . print_r($mega->isExported('/attr.md'),true) . "\n";
+echo "26. [isExport]: " . print_r($mega->isExported('/ssadsad'),true) . "\n";
+echo "26. [export]: " . print_r($mega->exportAdd('/attr.md'),true) . "\n";
+echo "26. [isExport]: " . print_r($mega->isExported('/attr.md'),true) . "\n";
+echo "26. [export]: " . print_r($mega->exportAdd('/attr.md'),true) . "\n";
+
 
 // 27. exportList
-echo "27. [exportList]:\n" . $mega->exportList() . "\n";
-
-// 28. exportAdd
-echo "28. [exportAdd]: // \$mega->exportAdd(string \$remotePath ...);\n";
+echo "27. [exportList]:\n" . print_r($mega->exportList(),true) . "\n";
 
 // 29. exportRemove
-echo "29. [exportRemove]: // \$mega->exportRemove(string \$remotePath);\n";
+echo "29. [exportRemove]: " . print_r($mega->exportRemove('/attr.md'),true) . "\n";
+
+
+
+exit;
 
 // 30. find
 echo "30. [find]: // \$mega->find(string \$remotePath ...);\n";
@@ -234,3 +250,79 @@ echo "74. [whoami]: " . $mega->whoami() . "\n";
 
 echo "\n--- TEST FINALIZADO ---";
 echo "</pre>";
+
+}
+
+
+
+// mega-attr
+// mega-backup
+// mega-cancel
+// mega-cat
+// mega-cd
+// mega-cmd
+// mega-cmd-server
+// mega-configure
+// mega-confirm
+// mega-confirmcancel
+// mega-cp
+// mega-debug
+// mega-deleteversions
+// mega-df
+// mega-du
+// mega-errorcode
+// mega-exclude
+// mega-exec
+// mega-export
+// mega-find
+// mega-ftp
+// mega-fuse-add
+// mega-fuse-config
+// mega-fuse-disable
+// mega-fuse-enable
+// mega-fuse-remove
+// mega-fuse-show
+// mega-get
+// mega-graphics
+// mega-help
+// mega-https
+// mega-import
+// mega-invite
+// mega-ipc
+// mega-killsession
+// mega-lcd
+// mega-log
+// mega-login
+// mega-logout
+// mega-lpwd
+// mega-ls
+// mega-mediainfo
+// mega-mkdir
+// mega-mount
+// mega-mv
+// mega-passwd
+// mega-permissions
+// mega-preview
+// mega-proxy
+// mega-put
+// mega-pwd
+// mega-quit
+// mega-reload
+// mega-rm
+// mega-session
+// mega-share
+// mega-showpcr
+// mega-signup
+// mega-speedlimit
+// mega-sync
+// mega-sync-config
+// mega-sync-ignore
+// mega-sync-issues
+// mega-thumbnail
+// mega-transfers
+// mega-tree
+// mega-userattr
+// mega-users
+// mega-version
+// mega-webdav
+// mega-whoami
