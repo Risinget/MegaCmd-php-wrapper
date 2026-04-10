@@ -131,11 +131,16 @@ echo "35. [https]: " . print_r($mega->https(), true) . "\n"; // IN linux.txt
 
 // 36. import
 
-echo "36. [import]: " . print_r($mega->import($mega->exportList()['output'][0]['link_full'], '/commands/commands'), true) . "\n"; // IN linux.txt
-exit;
+// echo "36. [import]: " . print_r($mega->import($mega->exportList()['output'][0]['link_full'], '/commands/commands'), true) . "\n"; // IN linux.txt
 
 // 37. killsession
+
+
+
+echo "37. [session]: " . print_r($mega->sessions(), true) . "\n"; // IN linux.txt
+
 echo "37. [killsession]: " . print_r($mega->killsession('sid'), true) . "\n"; // IN linux.txt
+exit;
 
 // 38. lcd
 echo "38. [lcd]: " . print_r($mega->lcd('.'), true) . "\n"; // IN linux.txt

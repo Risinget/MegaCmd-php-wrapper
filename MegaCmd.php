@@ -1150,7 +1150,15 @@ private function parseMegaPathList(string $output): array
      * @return bool|string|null
      */
     public function killsession(string $sid){
-        return $this->exec('killsession', [$sid]);
+
+        $res =  $this->exec('killsession', [$sid]);
+        if($res['success'] == 1){
+            $res['output'] = 'false';
+            return $res;
+        }
+        
+        $res['output'] = 'true';
+        return $res;
     } 
 
     /**
@@ -1648,11 +1656,167 @@ private function parseMegaPathList(string $output): array
         // return $res;
         return $this->exec('whoami');
     }
+
+
+    private function parseWhoamiFull(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [
+        'account_email' => null,
+        'available_storage' => null,
+        'storage' => [
+            'root' => null,
+            'inbox' => null,
+            'rubbish' => null,
+            'file_versions_size' => null,
+        ],
+        'pro_level' => null,
+        'subscription_type' => null,
+        'account_balance' => null,
+        'sessions' => [],
+        'active_sessions_count' => null,
+    ];
+
+    $currentSession = null;
+    $markCurrentNextSession = false;
+
+    foreach ($lines as $line) {
+        if (preg_match('/^Account e-mail:\s+(.+)$/', $line, $m)) {
+            $result['account_email'] = trim($m[1]);
+            continue;
+        }
+
+        if (preg_match('/^Available storage:\s+(.+)$/', $line, $m)) {
+            $result['available_storage'] = preg_replace('/\s+/', ' ', trim($m[1]));
+            continue;
+        }
+
+        if (preg_match('/^In ROOT:\s+(.+?)\s+in\s+(\d+)\s+file\(s\)\s+and\s+(\d+)\s+folder\(s\)$/', $line, $m)) {
+            $result['storage']['root'] = [
+                'size' => preg_replace('/\s+/', ' ', trim($m[1])),
+                'files' => (int)$m[2],
+                'folders' => (int)$m[3],
+            ];
+            continue;
+        }
+
+        if (preg_match('/^In INBOX:\s+(.+?)\s+in\s+(\d+)\s+file\(s\)\s+and\s+(\d+)\s+folder\(s\)$/', $line, $m)) {
+            $result['storage']['inbox'] = [
+                'size' => preg_replace('/\s+/', ' ', trim($m[1])),
+                'files' => (int)$m[2],
+                'folders' => (int)$m[3],
+            ];
+            continue;
+        }
+
+        if (preg_match('/^In RUBBISH:\s+(.+?)\s+in\s+(\d+)\s+file\(s\)\s+and\s+(\d+)\s+folder\(s\)$/', $line, $m)) {
+            $result['storage']['rubbish'] = [
+                'size' => preg_replace('/\s+/', ' ', trim($m[1])),
+                'files' => (int)$m[2],
+                'folders' => (int)$m[3],
+            ];
+            continue;
+        }
+
+        if (preg_match('/^Total size taken up by file versions:\s+(.+)$/', $line, $m)) {
+            $result['storage']['file_versions_size'] = preg_replace('/\s+/', ' ', trim($m[1]));
+            continue;
+        }
+
+        if (preg_match('/^Pro level:\s+(\d+)$/', $line, $m)) {
+            $result['pro_level'] = (int)$m[1];
+            continue;
+        }
+
+        if (preg_match('/^Subscription type:\s*(.*)$/', $line, $m)) {
+            $value = trim($m[1]);
+            $result['subscription_type'] = $value !== '' ? $value : null;
+            continue;
+        }
+
+        if (preg_match('/^Account balance:\s*(.*)$/', $line, $m)) {
+            $value = trim($m[1]);
+            $result['account_balance'] = $value !== '' ? $value : null;
+            continue;
+        }
+
+        if ($line === 'Current Active Sessions:') {
+            continue;
+        }
+
+        if ($line === '* Current Session') {
+            $markCurrentNextSession = true;
+            continue;
+        }
+
+        if (preg_match('/^Session ID:\s+(.+)$/', $line, $m)) {
+            if ($currentSession !== null) {
+                $result['sessions'][] = $currentSession;
+            }
+
+            $currentSession = [
+                'session_id' => trim($m[1]),
+                'session_start' => null,
+                'most_recent_activity' => null,
+                'ip' => null,
+                'country' => null,
+                'user_agent' => null,
+                'is_current' => $markCurrentNextSession ? true : false,
+            ];
+
+            $markCurrentNextSession = false;
+            continue;
+        }
+
+        if ($currentSession !== null && preg_match('/^Session start:\s+(.+)$/', $line, $m)) {
+            $currentSession['session_start'] = trim($m[1]);
+            continue;
+        }
+
+        if ($currentSession !== null && preg_match('/^Most recent activity:\s+(.+)$/', $line, $m)) {
+            $currentSession['most_recent_activity'] = trim($m[1]);
+            continue;
+        }
+
+        if ($currentSession !== null && preg_match('/^IP:\s+(.+)$/', $line, $m)) {
+            $currentSession['ip'] = trim($m[1]);
+            continue;
+        }
+
+        if ($currentSession !== null && preg_match('/^Country:\s+(.+)$/', $line, $m)) {
+            $currentSession['country'] = trim($m[1]);
+            continue;
+        }
+
+        if ($currentSession !== null && preg_match('/^User-Agent:\s+(.+)$/', $line, $m)) {
+            $currentSession['user_agent'] = trim($m[1]);
+            continue;
+        }
+
+        if ($line === '-----') {
+            continue;
+        }
+
+        if (preg_match('/^(\d+)\s+active sessions opened$/', $line, $m)) {
+            $result['active_sessions_count'] = (int)$m[1];
+            continue;
+        }
+    }
+
+    if ($currentSession !== null) {
+        $result['sessions'][] = $currentSession;
+    }
+
+    return $result;
+}
     public function sessions(){
         $res = $this->exec('whoami', '-l');
-        if($res['success']){
-            return trim($res['output']);
+        if($res['success'] == 1){
         }
+        $res['output'] = $this->parseWhoamiFull($res['output']);
         return $res;
     }
 }
