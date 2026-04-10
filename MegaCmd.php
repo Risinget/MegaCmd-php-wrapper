@@ -123,9 +123,14 @@ class MegaCmd {
             : $this->localBasePath;
     }
 
-    public function exec(string $command, array|string $args = []): array
+    public function exec(string $command, array|string $args = [], string $newCmdName = ''): array
     {
-        $cmdName = 'mega-' . $command;
+        if($newCmdName){
+            $cmdName = $newCmdName . $command;
+        }else{
+            $cmdName = 'mega-' . $command;
+        }
+
         $fullPath = $this->executablePath . $cmdName;
 
         if ($this->isWindows && $this->executablePath !== '' && file_exists($fullPath . '.bat')) {
@@ -887,6 +892,8 @@ private function buildMegaPathItem(
     ];
 }
 
+
+
 private function parseMegaPathList(string $output): array
 {
     $lines = preg_split('/\r\n|\r|\n/', $output);
@@ -1218,6 +1225,86 @@ private function parseMegaPathList(string $output): array
         return $res;
     }
 
+
+    
+private function parseLsLongWithHandles(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('rtrim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => trim($line) !== ''));
+
+    $result = [];
+
+    foreach ($lines as $line) {
+        $line = trim($line);
+
+        if ($line === '' || str_starts_with($line, 'FLAGS VERS')) {
+            continue;
+        }
+
+        // Directorios: dep-    -            - 09Apr2026 17:06:55 H:1RdE1JLB commands
+        if (preg_match(
+            '/^(\S+)\s+(-)\s+(-)\s+([0-9]{2}[A-Za-z]{3}[0-9]{4}\s+[0-9]{2}:[0-9]{2}:[0-9]{2})\s+H:([A-Za-z0-9]+)\s+(.+)$/',
+            $line,
+            $m
+        )) {
+            $flags = $m[1];
+            $name = $m[6];
+
+            $result[] = [
+                'flags' => $flags,
+                'versions' => null,
+                'size' => null,
+                'date' => $m[4],
+                'handle' => $m[5],
+                'name' => $name,
+                'path' => $name,
+                'dir' => null,
+                'ext' => pathinfo($name, PATHINFO_EXTENSION) ?: null,
+                'type' => 'folder',
+                'is_exported' => str_contains($flags, 'e'),
+            ];
+            continue;
+        }
+
+        // Archivos: ----    1    703.00  B 26Mar2026 08:24:31 H:lU1Q2CrR attr.md
+        // Archivos: ----    1      4.98 KB 26Mar2026 08:24:31 H:tRl2DYIK backup.md
+        if (preg_match(
+            '/^(\S+)\s+(\d+)\s+(\d+(?:\.\d+)?)\s+([KMGT]?B)\s+([0-9]{2}[A-Za-z]{3}[0-9]{4}\s+[0-9]{2}:[0-9]{2}:[0-9]{2})\s+H:([A-Za-z0-9]+)\s+(.+)$/',
+            $line,
+            $m
+        )) {
+            $flags = $m[1];
+            $name = $m[7];
+
+            $result[] = [
+                'flags' => $flags,
+                'versions' => (int)$m[2],
+                'size' => $m[3] . ' ' . $m[4],
+                'date' => $m[5],
+                'handle' => $m[6],
+                'name' => $name,
+                'path' => $name,
+                'dir' => null,
+                'ext' => pathinfo($name, PATHINFO_EXTENSION) ?: null,
+                'type' => 'file',
+                'is_exported' => str_contains($flags, 'e'),
+            ];
+            continue;
+        }
+
+        // Si no matchea, lo dejamos marcado para debug
+        $result[] = [
+            'raw' => $line,
+            'parse_error' => true,
+        ];
+    }
+
+    return $result;
+}
+
+
+
     /**
      * Prints the current local folder
      * @return bool|string|null
@@ -1228,30 +1315,101 @@ private function parseMegaPathList(string $output): array
      * @param string|null $path
      * @return array|string|null
      */
-    public function ls($path = null) {
+    public function ls($path = null, bool $detailed = false) {
         $args = [];
         if ($path) {
             $args[] = $path;
         }
-        $output = $this->exec('ls', $args);
-        if (!$output) return [];
+        if($detailed){
+            $args[] = '-hal';
+            $args[] = '--show-handles';
+        }
 
-        return array_filter(explode("\n", trim($output)));
+        $res = $this->exec('ls', $args);
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = $this->parseLsLongWithHandles($res['output']);
+
+        return $res;
     }
 
     /**
      * Show the masterkey of the account recovery key
-     * @param string $localpatToSave
      * @return bool|string|null
      */
-    public function masterkey(string $localpatToSave){ return $this->exec('masterkey', [$localpatToSave]);}
+    public function masterkey(){ 
+        // if this is Windows use MegaCliente.exe masterkey
+        if($this->isWindows){
+            return $this->exec('Client.exe masterkey', newCmdName:'Mega');
+        }
+
+        // if is linux
+        return $this->exec('exec masterkey');
+    }
+
+
+    private function parseMediaInfoList(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [];
+
+    foreach ($lines as $line) {
+        if (str_starts_with($line, 'FILE')) {
+            continue;
+        }
+
+        if (preg_match('/^(.+?)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)$/', $line, $m)) {
+            $path = trim($m[1]);
+            $widthRaw = $m[2];
+            $heightRaw = $m[3];
+            $fpsRaw = $m[4];
+            $playtimeRaw = $m[5];
+
+            $width = $widthRaw === '---' ? null : (int)$widthRaw;
+            $height = $heightRaw === '---' ? null : (int)$heightRaw;
+            $fps = $fpsRaw === '---' ? null : (int)$fpsRaw;
+            $playtime = $playtimeRaw === '---' ? null : $playtimeRaw;
+
+            $name = basename($path);
+            $ext = pathinfo($name, PATHINFO_EXTENSION);
+            $ext = $ext !== '' ? $ext : null;
+
+            $result[] = [
+                'path' => $path,
+                'name' => $name,
+                'width' => $width,
+                'height' => $height,
+                'fps' => $fps,
+                'playtime' => $playtime,
+                'has_media_info' => $width !== null || $height !== null || $fps !== null || $playtime !== null,
+                'type' => $ext === null ? 'folder' : 'file',
+            ];
+        }
+    }
+
+    return $result;
+}
 
     /**
-     * Get media info of a remote file
-     * @param string $remotePath
-     * @return bool|string|null
+     * Get media info of a remote file, or many arguments
      */
-    public function mediainfo(string $remotePath){ return $this->exec('mediainfo', [$remotePath]); }
+    public function mediainfo(string $remotePath, string ...$otherPaths){ 
+        $args = [$remotePath];
+        foreach($otherPaths as $path){
+            $args[] = $path;
+        }
+
+        $res = $this->exec('mediainfo', $args); 
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = $this->parseMediaInfoList($res['output']);
+        return $res;
+    }
     
     /**
      * Creates a remote folder
@@ -1259,9 +1417,40 @@ private function parseMegaPathList(string $output): array
      * @return bool|string|null
      */
     public function mkdir($remotePath) {
-        return $this->exec('mkdir', [$remotePath]);
+        // count of more / than 1
+        $recursive = substr_count($remotePath, '/') > 1;
+
+        $args[] = $remotePath;
+        if($recursive){
+            $args[] = '-p';
+        }
+        return $this->exec('mkdir', $args);
     }
 
+
+    public function folderExists(string $remotePath){
+        $res = $this->find(detailed: true);
+        if($res['success'] ==1 ){
+            return $res;
+        }
+        $exists = false;
+        if (str_starts_with($remotePath, '/')) {
+            $remotePath = substr($remotePath, 1);
+        }
+
+        if (str_ends_with($remotePath, '/')) {
+            $remotePath = substr($remotePath, 0, -1);
+        }
+        $res['debug'] = $remotePath;
+        foreach($res['output'] as $item){
+            if(($item['path'] === $remotePath && $item['type'] === 'folder')){
+                $exists = true;
+                break;
+            }
+        }
+        $res['output'] = $exists ? 'true' : 'false';
+        return $res;
+    }
     /**
      * Show of roots of the MEGA cloud drive
      * @return bool|string|null

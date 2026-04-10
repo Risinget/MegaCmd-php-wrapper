@@ -114,7 +114,7 @@ echo "29. [exportRemove]: " . print_r($mega->exportRemove('/attr.md'),true) . "\
 
 
 // 30. find
-// echo "30. [find]: " . print_r($mega->find(detailed: true, showHandles:true), true) . "\n"; // IN linux.txt
+echo "30. [find]: " . print_r($mega->find(detailed: true, showHandles:true), true) . "\n"; // IN linux.txt
 
 // 31. get
 // echo "31. [get]: " . print_r($mega->get('/prueba', 'fokin'), true) . "\n"; // IN linux.txt
@@ -156,17 +156,22 @@ echo "39. [log]: " . print_r($mega->log(), true) . "\n"; // IN linux.txt
 // echo "42. [lpwd]: " . print_r($mega->lpwd(), true) . "\n"; // IN linux.txt
 
 // 43. ls
-echo "43. [ls]: "; print_r($mega->ls()); echo "\n"; // IN linux.txt
+// echo "43. [ls]: "; print_r($mega->ls(detailed: true)); echo "\n"; // IN linux.txt
 
 // 44. masterkey
-echo "44. [masterkey]: " . print_r($mega->masterkey('.'), true) . "\n";
-exit;
+echo "44. [masterkey]: " . print_r($mega->masterkey(), true) . "\n";
 
 // 45. mediainfo
-echo "45. [mediainfo]: " . print_r($mega->mediainfo('/prueba'), true) . "\n"; // IN linux.txt
+echo "45. [mediainfo]: " . print_r($mega->mediainfo( 'VIDEO.mp4', 'attr.md', 'commands/'), true) . "\n"; // IN linux.txt
 
 // 46. mkdir
-echo "46. [mkdir]: " . print_r($mega->mkdir('/prueba/newdir'), true) . "\n"; // IN linux.txt
+echo "46. [mkdir]: " . print_r($mega->mkdir('/prueba/newdir/asdsadasd'), true) . "\n"; // IN linux.txt
+echo "46. [mkdir]: " . print_r($mega->mkdir('/prueba/newdir/asdsadasd'), true) . "\n"; // IN linux.txt
+echo "46. [mkdir]: " . print_r($mega->mkdir('/pruebita23233'), true) . "\n"; // IN linux.txt
+echo "46. [mkdir]: " . print_r($mega->mkdir('/pruebita23233'), true) . "\n"; // IN linux.txt
+echo "46. [folderExists]: " . print_r($mega->folderExists('/pruebita23233'), true) . "\n"; // IN linux.txt
+echo "46. [folderExists]: " . print_r($mega->folderExists('/pruebita233333233'), true) . "\n"; // IN linux.txt
+exit;
 
 // 47. mount
 echo "47. [mount]: " . print_r($mega->mount(), true) . "\n"; // IN linux.txt
