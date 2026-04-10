@@ -740,16 +740,18 @@ class MegaCmd {
     return $result;
 }
 
-private function splitMegaLink(string $url): array
-{
-    // ejemplo: https://mega.nz/file/ID#KEY
-    $parts = explode('#', $url);
+    private function splitMegaLink(string $url): array
+    {
+        // ejemplo: https://mega.nz/file/ID#KEY
+        $parts = explode('#', $url);
 
-    $clean = $parts[0];
-    $key = $parts[1] ?? null;
+        $clean = $parts[0];
+        $key = $parts[1] ?? null;
 
-    return [$clean, $key];
-}
+        return [$clean, $key];
+    }
+
+
     public function exportList(){
         $this->cd();
         $res = $this->exec('export');
@@ -761,6 +763,7 @@ private function splitMegaLink(string $url): array
         $output['output'] = $parsed;
         return $output;
     }
+
     /**
      * $remotePath -> path/file to export
      * $megaHosted -> true if you want to export and usable from S4 MEGA
@@ -774,6 +777,29 @@ private function splitMegaLink(string $url): array
      * 1d -> 1 day
      * 1y -> 1 year
      */
+    private function parseExportSingle(string $output): array
+    {
+        $line = trim($output);
+
+        if (!preg_match('/^Exported\s+(.+?):\s+(https:\/\/mega\.nz\/\S+)$/', $line, $m)) {
+            return [];
+        }
+
+        $path = trim($m[1]);
+        $url = trim($m[2]);
+
+        [$clean, $key] = $this->splitMegaLink($url);
+
+        return [
+            'path' => $path,
+            'name' => basename($path),
+            'type' => str_contains($url, '/folder/') ? 'folder' : 'file',
+
+            'link_full' => $url,
+            'link_clean' => $clean,
+            'decryption_key' => $key,
+        ];
+    }
     public function exportAdd(string $remotePath, bool $megaHosted = false, string $password = null, string $expire = null){
 
         $args = ['-a', '-f', $remotePath];
@@ -786,7 +812,14 @@ private function splitMegaLink(string $url): array
         if($expire){
             $args[] = '--expire='.$expire;
         }
-        return $this->exec('export', $args);
+        $res = $this->exec('export', $args);
+        if ($res['success'] == 1) {
+            return $res;
+        }
+        $parsed = $this->parseExportSingle($res['output']);
+        $output = $res;
+        $output['output'] = $parsed;
+        return $output;
     }
 
     public function exportRemove(string $remotePath){
@@ -804,6 +837,181 @@ private function splitMegaLink(string $url): array
 
     }
     
+private function buildMegaPathItem(
+    string $path,
+    ?string $type = null,
+    ?string $size = null,
+    ?string $handle = null,
+    ?string $link = null,
+    ?string $authKey = null
+): array {
+    $name = basename($path);
+    $dir = dirname($path);
+    $dir = $dir === '.' ? null : $dir;
+
+    $ext = pathinfo($name, PATHINFO_EXTENSION);
+    $ext = $ext !== '' ? $ext : null;
+
+    $linkClean = null;
+    $decryptionKey = null;
+
+    if ($link !== null) {
+        $split = $this->splitMegaLink($link);
+        $linkClean = $split['link_clean'];
+        $decryptionKey = $split['decryption_key'];
+    }
+
+    if ($type === null) {
+        if ($size !== null) {
+            $type = 'file';
+        } elseif ($ext !== null) {
+            $type = 'file';
+        } else {
+            $type = 'folder';
+        }
+    }
+
+    return [
+        'path' => $path,
+        'name' => $name,
+        'dir' => $dir,
+        'ext' => $ext,
+        'handle' => $handle,
+        'type' => $type,
+        'size' => $size,
+        'is_exported' => $link !== null,
+        'link_full' => $link,
+        'link_clean' => $linkClean,
+        'decryption_key' => $decryptionKey,
+        'auth_key' => $authKey,
+    ];
+}
+
+private function parseMegaPathList(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [];
+
+    foreach ($lines as $line) {
+        // 1) path <H:handle> (folder, shared as exported permanent folder link: URL)
+        if (preg_match(
+            '/^(.*?)\s+<H:([^>]+)>\s+\(folder,\s+shared as exported permanent folder link:\s+(https:\/\/mega\.nz\/folder\/[^\s\)]+)\)$/',
+            $line,
+            $m
+        )) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'folder',
+                size: null,
+                handle: trim($m[2]),
+                link: trim($m[3]),
+                authKey: null
+            );
+            continue;
+        }
+
+        // 2) path <H:handle> (size, shared as exported permanent file link: URL AuthKey=...)
+        if (preg_match(
+            '/^(.*?)\s+<H:([^>]+)>\s+\((.+?),\s+shared as exported permanent file link:\s+(https:\/\/mega\.nz\/file\/[^\s\)]+)(?:\s+AuthKey=([^\s\)]+))?\)$/',
+            $line,
+            $m
+        )) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'file',
+                size: preg_replace('/\s+/', ' ', trim($m[3])),
+                handle: trim($m[2]),
+                link: trim($m[4]),
+                authKey: isset($m[5]) ? trim($m[5]) : null
+            );
+            continue;
+        }
+
+        // 3) path <H:handle> (folder)
+        if (preg_match('/^(.*?)\s+<H:([^>]+)>\s+\(folder\)$/', $line, $m)) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'folder',
+                size: null,
+                handle: trim($m[2])
+            );
+            continue;
+        }
+
+        // 4) path <H:handle> (size)
+        if (preg_match('/^(.*?)\s+<H:([^>]+)>\s+\((.+)\)$/', $line, $m)) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'file',
+                size: preg_replace('/\s+/', ' ', trim($m[3])),
+                handle: trim($m[2])
+            );
+            continue;
+        }
+
+        // 5) path (folder, shared as exported permanent folder link: URL)
+        if (preg_match(
+            '/^(.*?)\s+\(folder,\s+shared as exported permanent folder link:\s+(https:\/\/mega\.nz\/folder\/[^\s\)]+)\)$/',
+            $line,
+            $m
+        )) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'folder',
+                size: null,
+                handle: null,
+                link: trim($m[2])
+            );
+            continue;
+        }
+
+        // 6) path (size, shared as exported permanent file link: URL AuthKey=...)
+        if (preg_match(
+            '/^(.*?)\s+\((.+?),\s+shared as exported permanent file link:\s+(https:\/\/mega\.nz\/file\/[^\s\)]+)(?:\s+AuthKey=([^\s\)]+))?\)$/',
+            $line,
+            $m
+        )) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'file',
+                size: preg_replace('/\s+/', ' ', trim($m[2])),
+                handle: null,
+                link: trim($m[3]),
+                authKey: isset($m[4]) ? trim($m[4]) : null
+            );
+            continue;
+        }
+
+        // 7) path (folder)
+        if (preg_match('/^(.*?)\s+\(folder\)$/', $line, $m)) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'folder'
+            );
+            continue;
+        }
+
+        // 8) path (size)
+        if (preg_match('/^(.*?)\s+\((.+)\)$/', $line, $m)) {
+            $result[] = $this->buildMegaPathItem(
+                path: trim($m[1]),
+                type: 'file',
+                size: preg_replace('/\s+/', ' ', trim($m[2]))
+            );
+            continue;
+        }
+
+        // 9) solo path
+        $result[] = $this->buildMegaPathItem(
+            path: $line
+        );
+    }
+
+    return $result;
+}
     /**
     *Determines time constrains, in the form: [+-]TIMEVALUE
     * $MTIME may include hours(h), days(d), minutes(M),
@@ -817,11 +1025,19 @@ private function splitMegaLink(string $url): array
     * "+1m12k3B" shows files bigger than 1 Mega, 12 Kbytes and 3Bytes
     * "-3M" shows files smaller than 3 Megabytes
     * "-4M+100K" shows files smaller than 4 Mbytes and bigger than 100 Kbytes
-     */
-    public function find(string $remotePath, string $pattern = "", string $type = "", string $mtime = "", string $size = "", bool $showHandles = false, bool $printHandles = false){
+    *
+    * $type
+    * f -> file
+    * d -> directory
+    */
+    public function find(string $remotePath = '', bool $detailed = false,string $pattern = "", string $type = "", string $mtime = "", string $size = "", bool $showHandles = false, bool $printHandles = false){
         $args = [];
         if($remotePath){
             $args[] = $remotePath;
+        }
+        if($detailed){
+            $args[] = '-l';
+
         }
         if($pattern){
             $args[] = '--pattern="'.$pattern.'"';
@@ -841,7 +1057,17 @@ private function splitMegaLink(string $url): array
         if($printHandles){
             $args[] = '--print-handles';
         }
-        return $this->exec('find', $args);
+        $res = $this->exec('find', $args);
+        if ($res['success'] == 1) {
+            return $res;
+        }
+
+        $parsed = $this->parseMegaPathList($res['output']);
+
+        $output = $res;
+        $output['output'] = $parsed;
+
+        return $output;
     }
     /////// UNNECESARY FUNCTIONS ///////
     // public function ftp(){} 
@@ -889,6 +1115,11 @@ private function splitMegaLink(string $url): array
         
         return $this->exec('get', $args);
     }
+    /**
+     * default is ON
+     * @param bool $enable
+     * @return array
+     */
     public function graphics(bool $enable){
         return $this->exec('graphics', [$enable ? 'on' : 'off']);
     }
