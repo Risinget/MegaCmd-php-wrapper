@@ -140,25 +140,24 @@ echo "35. [https]: " . print_r($mega->https(), true) . "\n"; // IN linux.txt
 echo "37. [session]: " . print_r($mega->sessions(), true) . "\n"; // IN linux.txt
 
 echo "37. [killsession]: " . print_r($mega->killsession('sid'), true) . "\n"; // IN linux.txt
-exit;
 
 // 38. lcd
-echo "38. [lcd]: " . print_r($mega->lcd('.'), true) . "\n"; // IN linux.txt
+// echo "38. [lcd]: " . print_r($mega->lcd('.'), true) . "\n"; // IN linux.txt // probar mas tarde
 
 // 39. log
 echo "39. [log]: " . print_r($mega->log(), true) . "\n"; // IN linux.txt
 
 // 40. login
-echo "40. [login]: " . print_r($mega->login('user@example.com', 'password'), true) . "\n"; // IN linux.txt
+// echo "40. [login]: " . print_r($mega->login('user@example.com', 'password'), true) . "\n"; // IN linux.txt
 
 // 41. logout
-echo "41. [logout]: " . print_r($mega->logout(), true) . "\n"; // IN linux.txt
-
+// echo "41. [logout]: " . print_r($mega->logout(), true) . "\n"; // IN linux.txt
 // 42. lpwd
-echo "42. [lpwd]: " . print_r($mega->lpwd(), true) . "\n"; // IN linux.txt
+// echo "42. [lpwd]: " . print_r($mega->lpwd(), true) . "\n"; // IN linux.txt
 
 // 43. ls
 echo "43. [ls]: "; print_r($mega->ls()); echo "\n"; // IN linux.txt
+exit;
 
 // 44. masterkey
 echo "44. [masterkey]: " . print_r($mega->masterkey('.'), true) . "\n";

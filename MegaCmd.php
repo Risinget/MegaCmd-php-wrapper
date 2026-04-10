@@ -1202,10 +1202,20 @@ private function parseMegaPathList(string $output): array
         if($sessionId){
             return $this->exec('login', [$sessionId]);
         }
-        return $this->exec('login', [$email, $password]);
+        $res = $this->exec('login', [$email, $password]);
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = 'true';
+        return $res;
     }
     public function logout() {
-        return $this->exec('logout');
+        $res = $this->exec('logout');
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = 'true';
+        return $res;
     }
 
     /**
