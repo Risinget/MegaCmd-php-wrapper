@@ -1470,7 +1470,14 @@ private function parseLsLongWithHandles(string $output): array
      * @param string $remoteDestinationPath
      * @return bool|string|null
      */
-    public function mv(string $remoteSrcPath, string $remoteDestinationPath){ return $this->exec('mv', [$remoteSrcPath, $remoteDestinationPath]);}
+    public function mv(string $remoteSrcPath, string $remoteDestinationPath){
+        $res = $this->exec('mv', [$remoteSrcPath, $remoteDestinationPath]);
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = $res['success'] == 0 ? 'true' : 'false';
+        return $res;
+    }
     
     /**
      * change password account
@@ -1510,6 +1517,43 @@ private function parseLsLongWithHandles(string $output): array
         }
         return $this->exec('proxy',[$args]);
     } 
+
+
+    private function parseTransferOutput(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines));
+
+    $result = [
+        'status' => null,
+        'path' => null,
+        'progress' => null,
+    ];
+
+    foreach ($lines as $line) {
+
+        // Upload finished
+        if (preg_match('/^Upload finished:\s+(.+)$/', $line, $m)) {
+            $result['status'] = 'finished';
+            $result['path'] = trim($m[1]);
+            continue;
+        }
+
+        // Progress
+        if (preg_match('/\((\d+)\/(\d+)\s+([A-Z]+):\s+([\d\.]+)\s+%\)/', $line, $m)) {
+            $result['progress'] = [
+                'transferred' => (int)$m[1],
+                'total' => (int)$m[2],
+                'unit' => $m[3],
+                'percent' => (float)$m[4],
+            ];
+            continue;
+        }
+    }
+
+    return $result;
+}
     public function psa(){} // innecesary
     /**
      * Uploads a local file or folder to MEGA
@@ -1518,7 +1562,12 @@ private function parseLsLongWithHandles(string $output): array
      * @return bool|string|null
      */
     public function put($localPath, $remotePath = "/") {
-        return $this->exec('put', [$localPath, $remotePath]);
+        $res = $this->exec('put', [$localPath, $remotePath]);
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = $this->parseTransferOutput($res['output']);
+        return $res;
     }
 
     /**
@@ -1555,9 +1604,14 @@ private function parseLsLongWithHandles(string $output): array
         return $this->exec('rm', $args);
     }
 
-
     public function session(){ 
-        return $this->exec('session');
+
+        $res = $this->exec('session');
+        if($res['success'] == 1){
+            return $res;
+        }
+        $res['output'] = str_replace('Your (secret) session is: ', '', $res['output']);
+        return $res;
     }
     // public function share(){} // unnecesary function
     
@@ -1585,38 +1639,135 @@ private function parseLsLongWithHandles(string $output): array
         }
         return $this->exec('signup', $args);
     }
+
+
+
+    
+private function parseSpeedlimit(string $output): array
+{
+    $lines = preg_split('/\r\n|\r|\n/', $output);
+    $lines = array_map('trim', $lines);
+    $lines = array_values(array_filter($lines, fn($line) => $line !== ''));
+
+    $result = [
+        'upload' => null,
+        'download' => null,
+    ];
+
+    foreach ($lines as $line) {
+        // Upload
+        if (preg_match('/^Upload speed limit\s*=\s*(.+)$/i', $line, $m)) {
+            $result['upload'] = $this->parseSpeedlimitValue($m[1]);
+            continue;
+        }
+
+        // Download
+        if (preg_match('/^Download speed limit\s*=\s*(.+)$/i', $line, $m)) {
+            $result['download'] = $this->parseSpeedlimitValue($m[1]);
+            continue;
+        }
+    }
+
+    return $result;
+}
+
+private function parseSpeedlimitValue(string $value): array
+{
+    $value = preg_replace('/\s+/', ' ', trim($value));
+
+    // unlimited
+    if (strcasecmp($value, 'unlimited') === 0) {
+        return [
+            'value' => null,
+            'unit' => null,
+            'raw' => 'unlimited',
+            'unlimited' => true,
+        ];
+    }
+
+    // 2048000 B/s
+    if (preg_match('/^([\d\.]+)\s+([A-Za-z\/]+)$/', $value, $m)) {
+        return [
+            'value' => is_numeric($m[1]) ? (float)$m[1] : $m[1],
+            'unit' => $m[2],
+            'raw' => $value,
+            'unlimited' => false,
+        ];
+    }
+
+    // fallback
+    return [
+        'value' => $value,
+        'unit' => null,
+        'raw' => $value,
+        'unlimited' => false,
+    ];
+}
+
     /**
      * Displays/modifies upload/download rate limits: either speed or max connections
      * 
      * @param string|null $newLimit New limit to set (e.g., "1M", "100K", or connections count)
-     * @param bool $download Set/Read download speed limit (-d)
-     * @param bool $upload Set/Read upload speed limit (-u)
-     * @param bool $uploadConnections Set/Read max number of connections for an upload transfer
-     * @param bool $downloadConnections Set/Read max number of connections for a download transfer
-     * @param bool $humanReadable Human readable output (-h)
-     * @return bool|string|null
+     * @param string $download Set/Read download speed limit (-d)
+     * @param string $upload Set/Read upload speed limit (-u)
+     * @param string $uploadConnections Set/Read max number of connections for an upload transfer
+     * @param string $downloadConnections Set/Read max number of connections for a download transfer
+     * @return array
      */
-    public function speedlimit(?string $newLimit = null, bool $download = false, bool $upload = false, bool $uploadConnections = false, bool $downloadConnections = false, bool $humanReadable = false) {
+    public function speedlimit(string $download = '', string $upload = '', string $uploadConnections = '', string $downloadConnections = '') {
         $args = [];
         if ($download) {
             $args[] = '-d';
+            $args[] = $download;
+            $res = $this->exec('speedlimit', $args);
+            if($res['success'] == 1){
+                return $res;
+            }
+            $res['output'] = $this->parseSpeedlimit($res['output']);
+            return $res;
         }
         if ($upload) {
+            $args[] = '-d';
+            $args[] = $download;
+            $res = $this->exec('speedlimit', $args);
+            if($res['success'] == 1){
+                return $res;
+            }
+            $res['output'] = $this->parseSpeedlimit($res['output']);
+            return $res;
             $args[] = '-u';
+            $res = $this->exec('speedlimit', $args);
+        
+            return $res;
         }
         if ($uploadConnections) {
+
             $args[] = '--upload-connections';
+            $args[] = $uploadConnections;
+            $res = $this->exec('speedlimit', $args);
+            if($res['success'] == 1){
+                return $res;
+            }
+            $res['output'] = $this->parseSpeedlimit($res['output']);
+            return $res;
         }
         if ($downloadConnections) {
             $args[] = '--download-connections';
+            $args[] = $downloadConnections;
+            $res = $this->exec('speedlimit', $args);
+            if($res['success'] == 1){
+                return $res;
+            }
+            $res['output'] = $this->parseSpeedlimit($res['output']);
+            return $res;
         }
-        if ($humanReadable) {
-            $args[] = '-h';
+
+        $res = $this->exec('speedlimit', $args);
+        if($res['success'] == 1){
+            return $res;
         }
-        if ($newLimit !== null) {
-            $args[] = $newLimit;
-        }
-        return $this->exec('speedlimit', $args);
+        $res['output'] = $this->parseSpeedlimit($res['output']);
+        return $res;
     }
     /**
      * Controls synchronizations.
@@ -1848,12 +1999,13 @@ private function parseLsLongWithHandles(string $output): array
         return $this->exec('webdav', $args);
     }
     public function whoami() {
-        // $res = $this->exec('whoami');
-        // if($res['success']){
-        //     return str_replace('Account e-mail: ', '',$res['output']);
-        // }
-        // return $res;
-        return $this->exec('whoami');
+        $res = $this->exec('whoami');
+        if($res['success'] == 1){
+            return $res;
+        }
+        
+        $res['output'] = str_replace('Account e-mail: ', '',$res['output']);
+        return $res;
     }
 
 
