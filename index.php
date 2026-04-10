@@ -157,10 +157,10 @@ echo "39. [log]: " . print_r($mega->log(), true) . "\n"; // IN linux.txt
 
 // 43. ls
 echo "43. [ls]: "; print_r($mega->ls()); echo "\n"; // IN linux.txt
-exit;
 
 // 44. masterkey
 echo "44. [masterkey]: " . print_r($mega->masterkey('.'), true) . "\n";
+exit;
 
 // 45. mediainfo
 echo "45. [mediainfo]: " . print_r($mega->mediainfo('/prueba'), true) . "\n"; // IN linux.txt
